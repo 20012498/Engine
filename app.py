@@ -1,162 +1,122 @@
 import streamlit as st
-from google.cloud import bigquery
 import pandas as pd
+from logic.bq_tools import get_full_product_data, get_all_lovs, get_criteria_details, get_simulated_score
+from logic.criteria_hub import render_criteria_simulator
 
-client = bigquery.Client(project="din-homeindex-dev-irq", location="EU")
+st.set_page_config(layout="wide", page_title="Home Index Simulator", page_icon="🟢")
 
-# --- CONFIGURATION UI ---
-st.set_page_config(layout="wide", page_title="Simulateur HI 2026")
+# --- STYLE CSS ---
+st.markdown("""
+    <style>
+    .main { background-color: #f9f9f9; }
+    .tech-label { color: #7f8c8d; font-size: 12px; font-family: monospace; }
+    .big-note { font-size: 40px !important; font-weight: 800; text-align: center; color: #2c3e50; }
+    .simu-note { font-size: 40px !important; font-weight: 800; text-align: center; color: #27ae60; }
+    /* Suppression des bordures blanches par défaut sur certaines colonnes */
+    div[data-testid="stColumn"] {
+        padding: 0px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- 1. FONCTIONS DE RÉCUPÉRATION ---
+if "data_loaded" not in st.session_state:
+    st.session_state.data_loaded, st.session_state.criteria_data = False, []
+    st.session_state.simulation_result, st.session_state.product_info = None, {}
 
-def get_product_basics(bu_id, prod_ref):
-    query = f"SELECT * FROM `dfdp-data-foundation-prod.productDataFoundation.productCatalogue` WHERE businessUnitIdentifier = {bu_id} AND productBuReference = {prod_ref} LIMIT 1"
-    return client.query(query).to_dataframe()
-
-def get_single_criteria_data(bu_id, prod_ref, top_intl, att_id):
-    bu_proof = 15 if top_intl == 1 else bu_id
-    query = f"""
-    SELECT 
-        p.characteristicIdentifier as att_id,
-        p.characteristicName as att_name,
-        p.value as current_value, 
-        p.valueIdentifier as val_id,
-        proof.productDocumentaryProofName as proof_name,
-        CAST(proof.productDocumentaryInterventionIsDone AS BOOL) as is_done
-    FROM `dfdp-data-foundation-prod.productDataFoundation.productCharacteristicsDenormalized` p
-    LEFT JOIN `dfdp-data-foundation-prod.productDataFoundation.productDocumentaryProof` proof
-        ON p.productBuReference = proof.productBuReference 
-        AND p.characteristicIdentifier = proof.productDocumentaryProofClaimedBy
-        AND proof.businessUnitIdentifier = {bu_proof}
-    WHERE p.productBuReference = {prod_ref} 
-    AND p.businessUnitIdentifier = {bu_id}
-    AND p.characteristicIdentifier = '{att_id}'
-    QUALIFY ROW_NUMBER() OVER (
-      PARTITION BY
-        p.businessUnitIdentifier,
-        p.productBuReference,
-        p.characteristicIdentifier
-      ORDER BY proof.productDocumentaryProofIsActive DESC, proof.productDocumentaryInterventionIsDone DESC
-    ) = 1
-    """
-    return client.query(query).to_dataframe()
-
-@st.cache_data
-def get_lov(att_id):
-    query = f"SELECT characteristicValue, characteristicValueCode FROM `dfdp-data-foundation-prod.productDataFoundation.characteristicValuesLink` WHERE characteristicIdentifier = '{att_id}'"
-    return client.query(query).to_dataframe()
-
-# --- 2. HEADER ---
-col_logo, col_title = st.columns([1, 6])
-with col_logo:
-    st.image("https://media.leroymerlin.fr/media/15112520/format/jpg?width=150", width=100)
-with col_title:
-    st.title("Engine Home Index 2026")
-
-# --- 3. SIDEBAR ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.header("📍 Paramètres")
+    st.image("https://media.adeo.com/media/3083810/media.png", width=180)
+    st.header("🔍 Recherche")
     bu_id = st.number_input("BU ID", value=1)
     prod_ref = st.number_input("Product Ref", value=90346525)
-
-if prod_ref:
-    df_prod = get_product_basics(bu_id, prod_ref)
     
-    if not df_prod.empty:
-        prod_info = df_prod.iloc[0]
-        top_intl = int(prod_info['topInternationalOffer'])
+    if st.button("📥 Charger le produit", use_container_width=True, type="primary"):
+        st.session_state.criteria_data = []
+        st.session_state.simulation_result = None
         
-        # Header Produit
-        c_img, c_txt = st.columns([1, 4])
-        with c_img:
-            st.image(f"https://media.adeo.com/media/{prod_ref}/format/jpg?width=250", use_container_width=True)
-        with c_txt:
-            st.header(prod_info['productAdministrativeDesignation'])
-            st.caption(f"Ref: {prod_ref} | Modèle: {prod_info.get('productDescriptiveModelIdentifier', 'N/A')}")
-
-        st.divider()
-
-        # Récupération DATA
-        df_pore = get_single_criteria_data(bu_id, prod_ref, top_intl, 'ATT_25674')
-        df_sppa = get_single_criteria_data(bu_id, prod_ref, top_intl, 'ATT_17017')
-
-        # --- TABLEAU COMPARATIF ---
-        st.subheader("📊 Comparateur de Score")
-        
-        h1, h2, h3, h4 = st.columns([3, 1, 3, 1])
-        h1.markdown("**Critère (Donnée Réelle)**")
-        h2.markdown("**Score Actuel**")
-        h3.markdown("**Simulateur**")
-        h4.markdown("**Score Simulé**")
-        st.markdown("---")
-
-        # --- LIGNE PORE ---
-        l1_c1, l1_c2, l1_c3, l1_c4 = st.columns([3, 1, 3, 1])
-        
-        with l1_c1:
-            if not df_pore.empty:
-                r_p = df_pore.iloc[0]
-                st.markdown(f"**Potential of Repairability** (`{r_p['att_id']}`)")
-                st.write(f"ATT Name: {r_p['att_name']}")
-                st.write(f"Valeur: **{r_p['current_value']}**")
-                p_status = "✅ Validée" if r_p['is_done'] is True else "❌ Non validée"
-                st.caption(f"Preuve: {r_p['proof_name'] if pd.notna(r_p['proof_name']) else 'Aucune'} ({p_status})")
-                score_p_reel = 100 if r_p['is_done'] is True else 75
-            else:
-                st.error("Donnée PORE manquante")
-                score_p_reel = 0
-
-        with l1_c2:
-            st.title(f"{score_p_reel}")
-
-        with l1_c3:
-            df_lov_p = get_lov('ATT_25674')
-            idx_p = 0
-            if not df_lov_p.empty and not df_pore.empty:
-                try: idx_p = df_lov_p['characteristicValue'].tolist().index(df_pore['current_value'].iloc[0])
-                except: idx_p = 0
+        with st.spinner("Chargement..."):
+            df_full = get_full_product_data(bu_id, prod_ref)
+            st.session_state.lovs = get_all_lovs()
             
-            sim_pore_val = st.selectbox("Simuler valeur :", df_lov_p['characteristicValue'].tolist() if not df_lov_p.empty else ["Yes"], index=idx_p, key="s_p")
-            # Initialise le toggle avec l'état réel de la base
-            real_proof_state = df_pore['is_done'].iloc[0] if not df_pore.empty else False
-            sim_pore_proof = st.toggle("Simuler Preuve Validée", value=bool(real_proof_state), key="t_p")
-
-        with l1_c4:
-            # Score simulé identique au réel par défaut grâce au toggle initialisé
-            score_p_sim = 100 if sim_pore_proof else 75
-            st.title(f"{score_p_sim}")
-
-        st.markdown("---")
-
-        # --- LIGNE SPPA ---
-        l2_c1, l2_c2, l2_c3, l2_c4 = st.columns([3, 1, 3, 1])
-        
-        with l2_c1:
-            if not df_sppa.empty:
-                r_s = df_sppa.iloc[0]
-                st.markdown(f"**Spare Parts Availability** (`{r_s['att_id']}`)")
-                st.write(f"ATT Name: {r_s['att_name']}")
-                st.write(f"Valeur: **{r_s['current_value']} ans**")
-                score_s_reel = 100 if int(r_s['current_value']) >= 10 else 50
+            if not df_full.empty:
+                st.session_state.product_info = df_full.iloc[0].to_dict()
+                top_intl = int(st.session_state.product_info.get('topInternationalOffer', 0))
+                
+                temp_list = []
+                codes = [c for c in df_full['criteriaCode'].unique() if c]
+                for code in codes:
+                    det = get_criteria_details(bu_id, prod_ref, top_intl, code)
+                    if not det.empty:
+                        temp_list.append({
+                            "code": code, 
+                            "note_reelle": df_full[df_full['criteriaCode'] == code]['criteriaNote'].iloc[0], 
+                            "det": det.iloc[0].to_dict()
+                        })
+                st.session_state.criteria_data, st.session_state.data_loaded = temp_list, True
             else:
-                st.error("Donnée SPPA manquante")
-                score_s_reel = 0
+                st.error("Produit introuvable.")
 
-        with l2_c2:
-            st.title(f"{score_s_reel}")
+# --- CONTENU PRINCIPAL ---
+if st.session_state.data_loaded:
+    p = st.session_state.product_info
+    
+    # En-tête : Image + Titre
+    head_left, head_mid = st.columns([1, 4])
+    with head_left:
+        if p.get('itemPicture'):
+            st.image(p['itemPicture'], use_container_width=True)
+    with head_mid:
+        st.title(p.get('productAdministrativeDesignation', 'Produit'))
+        st.markdown(f"**MODÈLE :** `{p.get('productDescriptiveModelIdentifier')}` | **SUPPLIER :** `{p.get('supplierPurchaseSiteIdentifier')}`")
 
-        with l2_c3:
-            try: curr_v = int(df_sppa['current_value'].iloc[0])
-            except: curr_v = 0
-            sim_sppa_val = st.slider("Simuler durée :", 0, 25, curr_v, key="s_s")
+    st.divider()
 
-        with l2_c4:
-            score_s_sim = 100 if sim_sppa_val >= 10 else 50
-            st.title(f"{score_s_sim}")
+    # Simulation Layout
+    SUPPORTED = ["PORE", "SPPA"]
+    display_items = [i for i in st.session_state.criteria_data if i['code'] in SUPPORTED]
 
-        # --- FOOTER ---
-        st.divider()
-        if st.button("🚀 Calculer Score Global", type="primary", use_container_width=True):
-            st.metric("Score Global DUR", "92 / 100", delta="Simulation active")
-    else:
-        st.error("Produit introuvable.")
+    # En-têtes de colonnes (Remplacement de overline par bold + caption)
+    cols_h = st.columns([3, 1, 3, 1])
+    cols_h[0].caption("**DÉTAILS CRITÈRE**")
+    cols_h[1].caption("**RÉEL**")
+    cols_h[2].caption("**SIMULATEUR**")
+    cols_h[3].caption("**SCORE SIMU**")
+
+    current_choices = []
+    for item in display_items:
+        code, det = item['code'], item['det']
+        st.write("") 
+        l1, l2, l3, l4 = st.columns([3, 1, 3, 1])
+        
+        with l1:
+            st.markdown(f"**{det['methodName']}**")
+            st.markdown(f"<div class='tech-label'>{det['att_name']} ({det['att_id']})<br>Actuel : {det['current_value']} (ID: {det.get('val_id','')})</div>", unsafe_allow_html=True)
+        
+        with l2:
+            st.markdown(f"<p class='big-note'>{int(item['note_reelle'])}</p>", unsafe_allow_html=True)
+        
+        with l3:
+            lov_f = st.session_state.lovs[st.session_state.lovs['code'] == code].rename(
+                columns={'label': 'characteristicValue', 'id': 'characteristicValueCode'}
+            )
+            choice = render_criteria_simulator(code, det, lov_f)
+            current_choices.append(choice)
+        
+        with l4:
+            if st.session_state.simulation_result is not None:
+                res = st.session_state.simulation_result
+                score_row = res[res['criteriaCode'] == code]
+                if not score_row.empty:
+                    st.markdown(f"<p class='simu-note'>{int(score_row['criteria_note'].iloc[0])}</p>", unsafe_allow_html=True)
+                else: st.error("Null")
+            else: st.write("")
+
+    st.divider()
+    if st.button("🚀 LANCER LA SIMULATION", type="primary", use_container_width=True):
+        st.session_state.simulation_result = get_simulated_score(
+            bu_id, prod_ref, 
+            p.get('productDescriptiveModelIdentifier'), 
+            p.get('supplierPurchaseSiteIdentifier'), 
+            current_choices
+        )
+        st.rerun()
