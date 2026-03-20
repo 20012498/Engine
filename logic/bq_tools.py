@@ -1,6 +1,7 @@
 import streamlit as st
 from google.cloud import bigquery
 import pandas as pd
+import json
 
 PROJECT_ID = "din-homeindex-dev-irq"
 client = bigquery.Client(project=PROJECT_ID, location="EU")
@@ -72,48 +73,29 @@ def get_all_lovs():
     return client.query(query).to_dataframe()
 
 def get_criteria_details(bu_id, prod_ref, top_intl, criteria_code):
-    bu_proof = 15 if top_intl == 1 else bu_id
     query = f"""
     SELECT 
-        m.characteristicIdentifier as att_id, m.methodName, p.characteristicName as att_name,
-        p.value as current_value, p.valueIdentifier as val_id,
-        proof.productDocumentaryProofName as proof_name,
-        CAST(proof.productDocumentaryInterventionIsDone AS BOOL) as is_done
+        m.characteristicIdentifier as att_id, 
+        m.methodName, 
+        p.characteristicName as att_name,  -- <--- VÉRIFIE BIEN CETTE LIGNE
+        p.value as current_value, 
+        p.valueIdentifier as val_id
     FROM `din-homeindex-dev-irq.homeIndex.homeIndexCharacteristic` m
     LEFT JOIN `dfdp-data-foundation-prod.productDataFoundation.productCharacteristicsDenormalized` p
         ON p.characteristicIdentifier = m.characteristicIdentifier
         AND p.productBuReference = {prod_ref} AND p.businessUnitIdentifier = {bu_id}
-    LEFT JOIN `dfdp-data-foundation-prod.productDataFoundation.productDocumentaryProof` proof
-        ON p.productBuReference = proof.productBuReference 
-        AND p.characteristicIdentifier = proof.productDocumentaryProofClaimedBy
-        AND proof.businessUnitIdentifier = {bu_proof}
     WHERE m.methodIdentifier = '{criteria_code}'
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY p.characteristicIdentifier ORDER BY proof.productDocumentaryProofIsActive DESC, proof.productDocumentaryInterventionIsDone DESC) = 1
+    LIMIT 1
     """
     return client.query(query).to_dataframe()
 
-def get_simulated_score(bu_id, prod_ref, model_id, supplier_id, current_choices):
-    criteria_rows = []
-    for c in current_choices:
-        v_id = c.get('val_id', '')
-        if c['code'] == 'SPPA': v_id = ""
-        row = f"JSON_OBJECT('criteriaCode', '{c['code']}', 'criteriaValue', '{c['val']}', 'criteriaValueIdentifier', '{v_id}', 'proof', '{c.get('proof', 'Yes')}', 'characteristic', '{c.get('att_id', '')}')"
-        criteria_rows.append(row)
-    
+def execute_engine_simulation(payload):
+    # Sécurisation des quotes pour le SQL
+    payload_str = json.dumps(payload).replace("'", "\\'")
     query = f"""
-    WITH simu_input AS (
-      SELECT TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
-        'productBuReference', {prod_ref}, 'businessUnitIdentifier', {bu_id}, 
-        'productDescriptiveModelIdentifier', '{model_id}', 'supplierPurchaseSiteIdentifier', '{supplier_id}',
-        'criteria', ARRAY[{",".join(criteria_rows)}]
-      ))) AS json_entry
-    ),
-    simu_output AS (
-      SELECT TO_JSON_STRING(`din-homeindex-dev-irq.asfr_home_index_score_flow`.call_single_engine(PARSE_JSON(json_entry))) AS result_json
-      FROM simu_input
-    )
-    SELECT JSON_VALUE(criterion, '$.criteriaCode') AS criteriaCode, SAFE_CAST(JSON_VALUE(criterion, '$.criteriaNote') AS FLOAT64) AS criteria_note
-    FROM simu_output, UNNEST(JSON_QUERY_ARRAY(result_json, '$[0].pillars')) AS pillar, UNNEST(JSON_QUERY_ARRAY(pillar, '$.criteria')) AS criterion
-    WHERE JSON_VALUE(pillar, '$.pillarCode') = 'DUR'
+    SELECT TO_JSON_STRING(`din-homeindex-dev-irq.asfr_home_index_score_flow`.call_single_engine(PARSE_JSON('{payload_str}'))) as res
     """
-    return client.query(query).to_dataframe()
+    df = client.query(query).to_dataframe()
+    if not df.empty and df['res'].iloc[0]:
+        return json.loads(df['res'].iloc[0])
+    return None

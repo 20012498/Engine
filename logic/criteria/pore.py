@@ -1,12 +1,46 @@
 import streamlit as st
+from logic.bq_tools import execute_engine_simulation
 
-def render_pore(det, lov_df, code):
-    st.markdown(f"**{det['methodName']}**")
-    idx = 0
-    if not lov_df.empty:
-        try: idx = lov_df['characteristicValue'].tolist().index(det['current_value'])
-        except: idx = 0
-    sim_val = st.selectbox("Valeur :", lov_df['characteristicValue'].tolist() if not lov_df.empty else [det['current_value']], index=idx, key=f"v_{code}_{det['att_id']}")
-    sim_id = lov_df[lov_df['characteristicValue'] == sim_val]['characteristicValueCode'].iloc[0] if not lov_df.empty else ""
-    sim_proof = st.toggle("Preuve Validée", value=bool(det['is_done']), key=f"t_{code}_{det['att_id']}")
-    return {"code": code, "val": sim_val, "val_id": sim_id, "proof": "Yes" if sim_proof else "No", "att_id": det['att_id']}
+def render_pore(det, lovs):
+    # Titre et Code ATT
+    st.markdown(f"**{det['methodName']} (PORE)**")
+    st.caption(f"ATT: {det['att_id']}")
+    
+    # Sélecteur de valeur
+    options = lovs['characteristicValue'].tolist()
+    default_val = det['current_value'] if det['current_value'] in options else options[0]
+    val = st.selectbox("Valeur", options, index=options.index(default_val), key="sim_pore_val")
+    row = lovs[lovs['characteristicValue'] == val].iloc[0]
+    
+    # Contrôle de la preuve
+    proof = st.radio("Preuve (Proof)", ["Yes", "No"], index=0, horizontal=True, key="sim_pore_proof")
+    
+    return {
+        "code": "PORE",
+        "val": val,
+        "val_id": row['characteristicValueCode'],
+        "att_id": det['att_id'],
+        "proof": proof
+    }
+
+def simulate_pore(bu_id, prod_ref, p_info, choice):
+    payload = {
+        "productBuReference": prod_ref,
+        "businessUnitIdentifier": bu_id,
+        "productDescriptiveModelIdentifier": str(p_info['productDescriptiveModelIdentifier']),
+        "supplierPurchaseSiteIdentifier": str(p_info['supplierPurchaseSiteIdentifier']),
+        "criteria": [{
+            "criteriaCode": "PORE",
+            "criteriaValue": choice['val'],
+            "criteriaValueIdentifier": choice['val_id'],
+            "proof": choice['proof'], # Utilisation dynamique du choix UI
+            "characteristic": choice['att_id']
+        }]
+    }
+    res = execute_engine_simulation(payload)
+    if res:
+        for pillar in res[0].get('pillars', []):
+            for crit in pillar.get('criteria', []):
+                if crit['criteriaCode'] == 'PORE':
+                    return crit.get('criteriaNote')
+    return None
