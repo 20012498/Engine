@@ -43,7 +43,7 @@ def get_full_product_data(bu_id, prod_ref):
         FROM engine_call,
         UNNEST(JSON_QUERY_ARRAY(result_json, '$[0].pillars')) AS pillar,
         UNNEST(JSON_QUERY_ARRAY(pillar, '$.criteria')) AS criterion
-        WHERE JSON_VALUE(pillar, '$.pillarCode') = 'DUR'
+        --WHERE JSON_VALUE(pillar, '$.pillarCode') = 'DUR'
     ),
     catalogue AS (
         SELECT prod.*, art.itemPicture, art.itemName
@@ -72,30 +72,44 @@ def get_all_lovs():
     """
     return client.query(query).to_dataframe()
 
-def get_criteria_details(bu_id, prod_ref, top_intl, criteria_code):
+def get_criteria_details(bu_id, prod_ref, top_intl, code):
+    # TA REQUETE SQL QUI FONCTIONNE
     query = f"""
-    SELECT 
-        m.characteristicIdentifier as att_id, 
-        m.methodName, 
-        p.characteristicName as att_name,  -- <--- VÉRIFIE BIEN CETTE LIGNE
-        p.value as current_value, 
-        p.valueIdentifier as val_id
-    FROM `din-homeindex-dev-irq.homeIndex.homeIndexCharacteristic` m
-    LEFT JOIN `dfdp-data-foundation-prod.productDataFoundation.productCharacteristicsDenormalized` p
-        ON p.characteristicIdentifier = m.characteristicIdentifier
-        AND p.productBuReference = {prod_ref} AND p.businessUnitIdentifier = {bu_id}
-    WHERE m.methodIdentifier = '{criteria_code}'
-    LIMIT 1
+    select prodCarVal.characteristicName as att_name
+        , prodCarVal.characteristicIdentifier as att_id
+        , prodCarVal.value as current_value
+        , hiCar.methodName as methodName
+    from `dfdp-data-foundation-prod.productDataFoundation.productCharacteristicsDenormalized` prodCarVal
+    inner join `din-homeindex-dev-irq.homeIndex.homeIndexCharacteristic` hiCar
+      on hiCar.characteristicIdentifier = prodCarVal.characteristicIdentifier
+    where hiCar.methodIdentifier = '{code}'
+    and prodCarVal.businessUnitIdentifier = {bu_id}
+    and prodCarVal.productBuReference = {prod_ref}
     """
+    # ON RENVOIE TOUT LE DATAFRAME (SANS ILOC)
     return client.query(query).to_dataframe()
 
 def execute_engine_simulation(payload):
-    # Sécurisation des quotes pour le SQL
-    payload_str = json.dumps(payload).replace("'", "\\'")
-    query = f"""
-    SELECT TO_JSON_STRING(`din-homeindex-dev-irq.asfr_home_index_score_flow`.call_single_engine(PARSE_JSON('{payload_str}'))) as res
+    # ← Supprimer "client = bigquery.Client()" qui ignorait project et location
+    
+    # Accepte soit {"calls": [[json_entry]]} soit directement json_entry
+    if "calls" in payload:
+        json_entry = payload["calls"][0][0]
+    else:
+        json_entry = payload
+        
+    json_str = json.dumps(json_entry).replace("'", "\\'")
+    
+    sql = f"""
+    SELECT `din-homeindex-dev-irq.asfr_home_index_score_flow`.call_single_engine(
+      PARSE_JSON('{json_str}')
+    ) as f0_
     """
-    df = client.query(query).to_dataframe()
-    if not df.empty and df['res'].iloc[0]:
-        return json.loads(df['res'].iloc[0])
-    return None
+    
+    try:
+        query_job = client.query(sql)  # ← client global défini en haut du fichier
+        results = query_job.result()
+        return [dict(row) for row in results]
+    except Exception as e:
+        print(f"ERREUR BQ: {e}")
+        return []
