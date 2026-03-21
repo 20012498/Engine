@@ -11,7 +11,7 @@ def render_sppa(details, lovs=None):
         att_name = d.get('att_name', '')
         curr_val = str(d.get('current_value', '')).strip()
 
-        if att_id == "17017" or "durée" in att_name.lower() or "année" in att_name.lower():
+        if att_id == "ATT_17017" or att_id == "17017" or "durée" in att_name.lower() or "année" in att_name.lower():
             try:
                 default_val = int(float(curr_val)) if curr_val not in ['None', ''] else 0
             except:
@@ -19,10 +19,16 @@ def render_sppa(details, lovs=None):
             
             val = st.number_input(f"{att_name}", value=default_val, min_value=0, key=f"sppa_v_{att_id}")
             choices.append({"att_id": att_id, "val": str(val)})
-            
+
+    # Fallback HORS de la boucle
     if not choices and details:
         d = details[0]
-        val = st.number_input(f"Fallback: {d.get('att_name')}", value=0, key="sppa_fallback")
+        curr = d.get('current_value', 0)
+        try:
+            default_val = int(float(curr)) if curr not in [None, '', 'None'] else 0
+        except:
+            default_val = 0
+        val = st.number_input(f"{d.get('att_name')}", value=default_val, min_value=0, key="sppa_fallback")
         choices.append({"att_id": str(d.get('att_id')), "val": str(val)})
 
     return {"code": "SPPA", "choices": choices}
