@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import importlib
 import json
-from logic.bq_tools import get_full_product_data, get_all_lovs, get_criteria_details, get_criteria_details_simple
+from logic.bq_tools import get_full_product_data, get_all_lovs, get_criteria_details, get_criteria_details_simple, get_criteria_details_characteristic
 
 # --- CONFIGURATION & INITIALISATION ---
 st.set_page_config(layout="wide", page_title="Home Index Simulator")
@@ -59,11 +59,13 @@ with st.sidebar:
             for code in [c for c in df_full['criteriaCode'].unique() if c]:
                 det_df = get_criteria_details(bu_id, prod_ref, top_intl, code)
                 if det_df.empty:
-                    det_df = get_criteria_details_simple(bu_id, prod_ref, code)  # ← fallback
+                    det_df = get_criteria_details_characteristic(bu_id, prod_ref, code)
+                if det_df.empty:
+                    det_df = get_criteria_details_simple(bu_id, prod_ref, code)
                 if not det_df.empty:
                     note = df_full[df_full['criteriaCode'] == code]['criteriaNote'].iloc[0]
                     temp_list.append({"code": code, "note_reelle": note, "details": det_df.to_dict('records')})
-                    st.session_state.criteria_data = temp_list
+            st.session_state.criteria_data = temp_list
             st.session_state.data_loaded = True
             st.session_state.current_choices = {}
             for key in list(st.session_state.keys()):
@@ -78,8 +80,8 @@ with st.sidebar:
         st.subheader("Actions")
         if st.button("🚀 SIMULATION GLOBALE", type="secondary"):
             for item in st.session_state.criteria_data:
-                if item['code'] == 'REWO':
-                    st.write("DEBUG REWO details:", item['details'])
+                if item['code'] == 'FRRR':
+                    st.write("DEBUG FRRR details:", item['details'])
                 code = item['code']
                 mod = get_criteria_module(code)
                 choice = st.session_state.current_choices.get(code)
@@ -108,17 +110,15 @@ if st.session_state.data_loaded:
         st.write("Critères chargés:", [item['code'] for item in st.session_state.criteria_data])
 
         for item in st.session_state.criteria_data:
-            if item['code'] == 'RECMM':
-                st.write("DEBUG RECMM details:", item['details'])
-            if item['code'] == 'REWO':
-                st.write("DEBUG REWO details:", item['details'])
+            if item['code'] == 'FRRR':
+                st.write("DEBUG FRRR details:", item['details'])
 
     # Mapping des Piliers
     MAPPING_PILIERS = {
-        "🛠️ DURABILITY": ["PORE", "SPPA"],
+        "🛠️ DURABILITY": ["PORE", "SPPA", "FRRR"],
         "⚡ USE": ["ENSA", "ENCO"],
-        "♻️ EOL": ["RECMM"],
-        "🌿 RME": ["REWO"]
+        "♻️ END OF LIFE": ["RECMM"],
+        "🌿 RAW MATERIAL EXTRACTION": ["REWO"]
     }
 
     for pillar_name, target_codes in MAPPING_PILIERS.items():

@@ -6,6 +6,23 @@ import json
 PROJECT_ID = "din-homeindex-dev-irq"
 client = bigquery.Client(project=PROJECT_ID, location="EU")
 
+def get_criteria_details_characteristic(bu_id, prod_ref, code):
+    """Pour les critères avec données dans le champ characteristic (ex: FRRR)"""
+    query = f"""
+    SELECT 
+        char_item.characteristicName as att_name,
+        char_item.characteristicName as att_id,
+        char_item.characteristicValue as current_value,
+        '{code}' as methodName
+    FROM `din-homeindex-dev-irq.asfr_home_index_score_flow.v_homeIndexCriteriaData`,
+    UNNEST(characteristic) as char_item
+    WHERE productBuReference = {prod_ref}
+    AND businessUnitIdentifier = {bu_id}
+    AND criteriaCode = '{code}'
+    LIMIT 10
+    """
+    return client.query(query).to_dataframe()
+
 def get_full_product_data(bu_id, prod_ref):
     query = f"""
     WITH formatted_input AS (
