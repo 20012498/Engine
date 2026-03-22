@@ -102,8 +102,8 @@ with st.sidebar:
         st.subheader("Actions")
         if st.button("🚀 SIMULATION GLOBALE", type="secondary"):
             for item in st.session_state.criteria_data:
-                if item['code'] == 'TYEN':
-                    st.write("DEBUG TYEN details:", item['details'])
+                if item['code'] == 'WCTA':
+                    st.write("DEBUG WCTA details:", item['details'])
                 code = item['code']
                 mod = get_criteria_module(code)
                 choice = st.session_state.current_choices.get(code)
@@ -131,13 +131,13 @@ if st.session_state.data_loaded:
 
         st.write("Critères chargés:", [item['code'] for item in st.session_state.criteria_data])
         for item in st.session_state.criteria_data:
-            if item['code'] == 'TYEN':
-                st.write("DEBUG TYEN details:", item['details'])
+            if item['code'] == 'WCTA':
+                st.write("DEBUG WCTA details:", item['details'])
 
     # Mapping des Piliers
     MAPPING_PILIERS = {
         "🛠️ DURABILITY": ["PORE", "SPPA", "FRRR"],
-        "⚡ USE": ["ENSA", "ENCO","PROF","TYEN"],
+        "⚡ USE": ["ENSA", "ENCO","PROF","TYEN","WCTA"],
         "♻️ END OF LIFE": ["RECMM"],
         "🌿 RAW MATERIAL EXTRACTION": ["REWO","RETE","EFCT"]
     }
