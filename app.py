@@ -102,8 +102,8 @@ with st.sidebar:
         st.subheader("Actions")
         if st.button("🚀 SIMULATION GLOBALE", type="secondary"):
             for item in st.session_state.criteria_data:
-                if item['code'] == 'OTL':
-                    st.write("DEBUG OTL details:", item['details'])
+                if item['code'] == 'MWR':
+                    st.write("DEBUG MWR details:", item['details'])
                 code = item['code']
                 mod = get_criteria_module(code)
                 choice = st.session_state.current_choices.get(code)
@@ -131,12 +131,12 @@ if st.session_state.data_loaded:
 
         st.write("Critères chargés:", [item['code'] for item in st.session_state.criteria_data])
         for item in st.session_state.criteria_data:
-            if item['code'] == 'OTL':
-                st.write("DEBUG OTL details:", item['details'])
+            if item['code'] == 'MWR':
+                st.write("DEBUG MWR details:", item['details'])
 
     # Mapping des Piliers
     MAPPING_PILIERS = {
-        "🛠️ DURABILITY": ["PORE", "SPPA", "FRRR"],
+        "🛠️ DURABILITY": ["PORE", "SPPA", "FRRR","MWR"],
         "⚡ USE": ["ENSA", "ENCO","PROF","TYEN","WCTA","WCWC"],
         "♻️ END OF LIFE": ["RECMM"],
         "🌿 RAW MATERIAL EXTRACTION": ["REWO","RETE","EFCT"],
