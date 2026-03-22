@@ -102,8 +102,8 @@ with st.sidebar:
         st.subheader("Actions")
         if st.button("🚀 SIMULATION GLOBALE", type="secondary"):
             for item in st.session_state.criteria_data:
-                if item['code'] == 'EFCT':
-                    st.write("DEBUG EFCT details:", item['details'])
+                if item['code'] == 'PROF':
+                    st.write("DEBUG PROF details:", item['details'])
                 code = item['code']
                 mod = get_criteria_module(code)
                 choice = st.session_state.current_choices.get(code)
@@ -131,13 +131,13 @@ if st.session_state.data_loaded:
 
         st.write("Critères chargés:", [item['code'] for item in st.session_state.criteria_data])
         for item in st.session_state.criteria_data:
-            if item['code'] == 'EFCT':
-                st.write("DEBUG EFCT details:", item['details'])
+            if item['code'] == 'PROF':
+                st.write("DEBUG PROF details:", item['details'])
 
     # Mapping des Piliers
     MAPPING_PILIERS = {
         "🛠️ DURABILITY": ["PORE", "SPPA", "FRRR"],
-        "⚡ USE": ["ENSA", "ENCO"],
+        "⚡ USE": ["ENSA", "ENCO","PROF"],
         "♻️ END OF LIFE": ["RECMM"],
         "🌿 RAW MATERIAL EXTRACTION": ["REWO","RETE","EFCT"]
     }
@@ -168,7 +168,7 @@ if st.session_state.data_loaded:
                     st.markdown(f"<p class='big-note'>{int(note_val)}</p>", unsafe_allow_html=True)
                 except:
                     st.markdown(f"<p class='big-note'>-</p>", unsafe_allow_html=True)
-                    
+
             with l3:
                 render_func = getattr(mod, f"render_{code.lower()}")
                 lov_f = st.session_state.lovs[st.session_state.lovs['code'] == code].rename(

@@ -118,8 +118,10 @@ def get_criteria_details_simple(bu_id, prod_ref, code):
         COALESCE(criteriaValueIdentifier, criteriaValue) as current_value,
         criteriaValue as current_value_id,
         proof,
-        criteriaCode as methodName
+        COALESCE(hiCrit.homeIndexCriteriaName, criteriaCode) as methodName
     FROM `din-homeindex-dev-irq.asfr_home_index_score_flow.v_homeIndexCriteriaData`
+    LEFT JOIN `din-homeindex-dev-irq.homeIndex.homeIndexCriteria` hiCrit
+      ON hiCrit.homeIndexCriteriaIdentifier = criteriaCode
     WHERE productBuReference = {prod_ref}
     AND businessUnitIdentifier = {bu_id}
     AND criteriaCode = '{code}'
