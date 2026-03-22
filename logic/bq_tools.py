@@ -89,6 +89,23 @@ def get_criteria_details(bu_id, prod_ref, top_intl, code):
     # ON RENVOIE TOUT LE DATAFRAME (SANS ILOC)
     return client.query(query).to_dataframe()
 
+def get_criteria_details_simple(bu_id, prod_ref, code):
+    """Pour les critères sans ATT dans homeIndexCharacteristic (ex: REWO)"""
+    query = f"""
+    SELECT 
+        criteriaCode as att_name,
+        criteriaCode as att_id,
+        criteriaValue as current_value,
+        proof,
+        criteriaCode as methodName
+    FROM `din-homeindex-dev-irq.asfr_home_index_score_flow.v_homeIndexCriteriaData`
+    WHERE productBuReference = {prod_ref}
+    AND businessUnitIdentifier = {bu_id}
+    AND criteriaCode = '{code}'
+    LIMIT 1
+    """
+    return client.query(query).to_dataframe()
+
 def execute_engine_simulation(payload):
     # ← Supprimer "client = bigquery.Client()" qui ignorait project et location
     

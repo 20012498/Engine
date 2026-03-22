@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import importlib
 import json
-from logic.bq_tools import get_full_product_data, get_all_lovs, get_criteria_details
+from logic.bq_tools import get_full_product_data, get_all_lovs, get_criteria_details, get_criteria_details_simple
 
 # --- CONFIGURATION & INITIALISATION ---
 st.set_page_config(layout="wide", page_title="Home Index Simulator")
@@ -58,11 +58,12 @@ with st.sidebar:
             temp_list = []
             for code in [c for c in df_full['criteriaCode'].unique() if c]:
                 det_df = get_criteria_details(bu_id, prod_ref, top_intl, code)
+                if det_df.empty:
+                    det_df = get_criteria_details_simple(bu_id, prod_ref, code)  # ← fallback
                 if not det_df.empty:
                     note = df_full[df_full['criteriaCode'] == code]['criteriaNote'].iloc[0]
                     temp_list.append({"code": code, "note_reelle": note, "details": det_df.to_dict('records')})
-
-            st.session_state.criteria_data = temp_list
+                    st.session_state.criteria_data = temp_list
             st.session_state.data_loaded = True
             st.session_state.current_choices = {}
             for key in list(st.session_state.keys()):
@@ -116,7 +117,8 @@ if st.session_state.data_loaded:
     MAPPING_PILIERS = {
         "🛠️ DURABILITY": ["PORE", "SPPA"],
         "⚡ USE": ["ENSA", "ENCO"],
-        "♻️ EOL": ["RECMM"]
+        "♻️ EOL": ["RECMM"],
+        "🌿 RME": ["REWO"]
     }
 
     for pillar_name, target_codes in MAPPING_PILIERS.items():
