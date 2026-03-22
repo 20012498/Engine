@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import importlib
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from logic.bq_tools import get_full_product_data, get_all_lovs, get_criteria_details, get_criteria_details_simple, get_criteria_details_characteristic
 
 # --- CONFIGURATION & INITIALISATION ---
@@ -48,15 +49,20 @@ with st.sidebar:
     prod_ref = st.number_input("Product Ref", value=82271004)
 
     if st.button("📥 Charger le Produit", type="primary"):
-        df_full = get_full_product_data(bu_id, prod_ref)
-        st.session_state.lovs = get_all_lovs()
+
+        # Chargement parallèle de df_full et lovs
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_full = executor.submit(get_full_product_data, bu_id, prod_ref)
+            future_lovs = executor.submit(get_all_lovs)
+            df_full = future_full.result()
+            st.session_state.lovs = future_lovs.result()
 
         if not df_full.empty:
             st.session_state.product_info = df_full.iloc[0].to_dict()
             top_intl = int(st.session_state.product_info.get('topInternationalOffer', 0))
+            codes = [c for c in df_full['criteriaCode'].unique() if c]
 
-            temp_list = []
-            for code in [c for c in df_full['criteriaCode'].unique() if c]:
+            def load_criteria(code):
                 det_df = get_criteria_details(bu_id, prod_ref, top_intl, code)
                 if det_df.empty:
                     det_df = get_criteria_details_characteristic(bu_id, prod_ref, code)
@@ -64,7 +70,19 @@ with st.sidebar:
                     det_df = get_criteria_details_simple(bu_id, prod_ref, code)
                 if not det_df.empty:
                     note = df_full[df_full['criteriaCode'] == code]['criteriaNote'].iloc[0]
-                    temp_list.append({"code": code, "note_reelle": note, "details": det_df.to_dict('records')})
+                    return {"code": code, "note_reelle": note, "details": det_df.to_dict('records')}
+                return None
+
+            temp_list = []
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                futures = {executor.submit(load_criteria, code): code for code in codes}
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        temp_list.append(result)
+
+            temp_list.sort(key=lambda x: codes.index(x['code']) if x['code'] in codes else 99)
+
             st.session_state.criteria_data = temp_list
             st.session_state.data_loaded = True
             st.session_state.current_choices = {}
@@ -80,8 +98,6 @@ with st.sidebar:
         st.subheader("Actions")
         if st.button("🚀 SIMULATION GLOBALE", type="secondary"):
             for item in st.session_state.criteria_data:
-                if item['code'] == 'FRRR':
-                    st.write("DEBUG FRRR details:", item['details'])
                 code = item['code']
                 mod = get_criteria_module(code)
                 choice = st.session_state.current_choices.get(code)
@@ -96,7 +112,6 @@ with st.sidebar:
 if st.session_state.data_loaded:
     p = st.session_state.product_info
 
-    # Header Produit
     c_img, c_txt = st.columns([1, 4])
     with c_img:
         url = p.get('itemPicture')
@@ -107,11 +122,6 @@ if st.session_state.data_loaded:
     with c_txt:
         st.title(p.get('productAdministrativeDesignation', 'Produit'))
         st.caption(f"REF: {prod_ref} | MODÈLE: {p.get('productDescriptiveModelIdentifier')}")
-        st.write("Critères chargés:", [item['code'] for item in st.session_state.criteria_data])
-
-        for item in st.session_state.criteria_data:
-            if item['code'] == 'FRRR':
-                st.write("DEBUG FRRR details:", item['details'])
 
     # Mapping des Piliers
     MAPPING_PILIERS = {

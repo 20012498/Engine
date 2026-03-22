@@ -60,7 +60,6 @@ def get_full_product_data(bu_id, prod_ref):
         FROM engine_call,
         UNNEST(JSON_QUERY_ARRAY(result_json, '$[0].pillars')) AS pillar,
         UNNEST(JSON_QUERY_ARRAY(pillar, '$.criteria')) AS criterion
-        --WHERE JSON_VALUE(pillar, '$.pillarCode') = 'DUR'
     ),
     catalogue AS (
         SELECT prod.*, art.itemPicture, art.itemName
@@ -77,6 +76,7 @@ def get_full_product_data(bu_id, prod_ref):
     """
     return client.query(query).to_dataframe()
 
+@st.cache_data(ttl=3600)
 def get_all_lovs():
     query = """
     SELECT DISTINCT hiCar.methodIdentifier as code, valCar.characteristicValue as label, valCar.characteristicValueCode as id
@@ -90,7 +90,6 @@ def get_all_lovs():
     return client.query(query).to_dataframe()
 
 def get_criteria_details(bu_id, prod_ref, top_intl, code):
-    # TA REQUETE SQL QUI FONCTIONNE
     query = f"""
     select prodCarVal.characteristicName as att_name
         , prodCarVal.characteristicIdentifier as att_id
@@ -103,7 +102,6 @@ def get_criteria_details(bu_id, prod_ref, top_intl, code):
     and prodCarVal.businessUnitIdentifier = {bu_id}
     and prodCarVal.productBuReference = {prod_ref}
     """
-    # ON RENVOIE TOUT LE DATAFRAME (SANS ILOC)
     return client.query(query).to_dataframe()
 
 def get_criteria_details_simple(bu_id, prod_ref, code):
@@ -124,9 +122,6 @@ def get_criteria_details_simple(bu_id, prod_ref, code):
     return client.query(query).to_dataframe()
 
 def execute_engine_simulation(payload):
-    # ← Supprimer "client = bigquery.Client()" qui ignorait project et location
-    
-    # Accepte soit {"calls": [[json_entry]]} soit directement json_entry
     if "calls" in payload:
         json_entry = payload["calls"][0][0]
     else:
@@ -141,7 +136,7 @@ def execute_engine_simulation(payload):
     """
     
     try:
-        query_job = client.query(sql)  # ← client global défini en haut du fichier
+        query_job = client.query(sql)
         results = query_job.result()
         return [dict(row) for row in results]
     except Exception as e:
