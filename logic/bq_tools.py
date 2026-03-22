@@ -145,7 +145,7 @@ def execute_engine_simulation(payload):
     
     try:
         query_job = client.query(sql)
-        results = query_job.result()
+        results = query_job.result(timeout=15)  # ← timeout 15 secondes
         return [dict(row) for row in results]
     except Exception as e:
         print(f"ERREUR BQ: {e}")
