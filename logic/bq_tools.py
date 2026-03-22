@@ -36,8 +36,8 @@ def get_full_product_data(bu_id, prod_ref):
           'supplierPurchaseSiteIdentifier', supplierPurchaseSiteIdentifier,
           'criteria', ARRAY_AGG(JSON_OBJECT(
             'criteriaCode', criteriaCode,
-            'criteriaValue', criteriaValue,
-            'criteriaValueIdentifier', criteriaValueIdentifier,
+            'criteriaValue', CASE WHEN criteriaCode = 'EFCT' THEN criteriaValueIdentifier ELSE criteriaValue END,
+            'criteriaValueIdentifier', CASE WHEN criteriaCode = 'EFCT' THEN criteriaValue ELSE criteriaValueIdentifier END,
             'proof', proof,
             'characteristic', characteristic
           ))
@@ -61,6 +61,11 @@ def get_full_product_data(bu_id, prod_ref):
         UNNEST(JSON_QUERY_ARRAY(result_json, '$[0].pillars')) AS pillar,
         UNNEST(JSON_QUERY_ARRAY(pillar, '$.criteria')) AS criterion
     ),
+    all_criteria AS (
+        SELECT DISTINCT criteriaCode
+        FROM `din-homeindex-dev-irq.asfr_home_index_score_flow.v_homeIndexCriteriaData`
+        WHERE productBuReference = {prod_ref} AND businessUnitIdentifier = {bu_id}
+    ),
     catalogue AS (
         SELECT prod.*, art.itemPicture, art.itemName
         FROM `dfdp-data-foundation-prod.productDataFoundation.productCatalogue` prod
@@ -69,9 +74,10 @@ def get_full_product_data(bu_id, prod_ref):
           AND art.itemIdentifier = prod.productBuReference
         WHERE prod.businessUnitIdentifier = {bu_id} AND prod.productBuReference = {prod_ref}
     )
-    SELECT c.*, s.criteriaCode, s.criteriaNote, e.productDescriptiveModelIdentifier, e.supplierPurchaseSiteIdentifier
+    SELECT c.*, ac.criteriaCode, s.criteriaNote, e.productDescriptiveModelIdentifier, e.supplierPurchaseSiteIdentifier
     FROM catalogue c
-    LEFT JOIN scores s ON 1=1
+    LEFT JOIN all_criteria ac ON 1=1
+    LEFT JOIN scores s ON s.criteriaCode = ac.criteriaCode
     LEFT JOIN (SELECT DISTINCT productDescriptiveModelIdentifier, supplierPurchaseSiteIdentifier FROM engine_call) e ON 1=1
     """
     return client.query(query).to_dataframe()
@@ -105,12 +111,12 @@ def get_criteria_details(bu_id, prod_ref, top_intl, code):
     return client.query(query).to_dataframe()
 
 def get_criteria_details_simple(bu_id, prod_ref, code):
-    """Pour les critères sans ATT dans homeIndexCharacteristic (ex: REWO)"""
     query = f"""
     SELECT 
         criteriaCode as att_name,
         criteriaCode as att_id,
-        criteriaValue as current_value,
+        COALESCE(criteriaValueIdentifier, criteriaValue) as current_value,
+        criteriaValue as current_value_id,
         proof,
         criteriaCode as methodName
     FROM `din-homeindex-dev-irq.asfr_home_index_score_flow.v_homeIndexCriteriaData`

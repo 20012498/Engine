@@ -64,10 +64,14 @@ with st.sidebar:
 
             def load_criteria(code):
                 det_df = get_criteria_details(bu_id, prod_ref, top_intl, code)
+                print(f"{code} - get_criteria_details: {len(det_df)} rows")
                 if det_df.empty:
                     det_df = get_criteria_details_characteristic(bu_id, prod_ref, code)
+                    print(f"{code} - get_criteria_details_characteristic: {len(det_df)} rows")
                 if det_df.empty:
                     det_df = get_criteria_details_simple(bu_id, prod_ref, code)
+                    print(f"{code} - get_criteria_details_simple: {len(det_df)} rows")
+                print(f"{code} - final: {len(det_df)} rows, empty: {det_df.empty}")
                 if not det_df.empty:
                     note = df_full[df_full['criteriaCode'] == code]['criteriaNote'].iloc[0]
                     return {"code": code, "note_reelle": note, "details": det_df.to_dict('records')}
@@ -98,6 +102,8 @@ with st.sidebar:
         st.subheader("Actions")
         if st.button("🚀 SIMULATION GLOBALE", type="secondary"):
             for item in st.session_state.criteria_data:
+                if item['code'] == 'EFCT':
+                    st.write("DEBUG EFCT details:", item['details'])
                 code = item['code']
                 mod = get_criteria_module(code)
                 choice = st.session_state.current_choices.get(code)
@@ -123,12 +129,17 @@ if st.session_state.data_loaded:
         st.title(p.get('productAdministrativeDesignation', 'Produit'))
         st.caption(f"REF: {prod_ref} | MODÈLE: {p.get('productDescriptiveModelIdentifier')}")
 
+        st.write("Critères chargés:", [item['code'] for item in st.session_state.criteria_data])
+        for item in st.session_state.criteria_data:
+            if item['code'] == 'EFCT':
+                st.write("DEBUG EFCT details:", item['details'])
+
     # Mapping des Piliers
     MAPPING_PILIERS = {
         "🛠️ DURABILITY": ["PORE", "SPPA", "FRRR"],
         "⚡ USE": ["ENSA", "ENCO"],
         "♻️ END OF LIFE": ["RECMM"],
-        "🌿 RAW MATERIAL EXTRACTION": ["REWO"]
+        "🌿 RAW MATERIAL EXTRACTION": ["REWO","RETE","EFCT"]
     }
 
     for pillar_name, target_codes in MAPPING_PILIERS.items():
@@ -152,8 +163,12 @@ if st.session_state.data_loaded:
                     st.markdown(f"<div class='tech-label'><b>{d['att_name']}</b> ({d['att_id']})<br>Actuel: {d['current_value']}</div>", unsafe_allow_html=True)
 
             with l2:
-                st.markdown(f"<p class='big-note'>{int(item['note_reelle'])}</p>", unsafe_allow_html=True)
-
+                note_val = item.get('note_reelle')
+                try:
+                    st.markdown(f"<p class='big-note'>{int(note_val)}</p>", unsafe_allow_html=True)
+                except:
+                    st.markdown(f"<p class='big-note'>-</p>", unsafe_allow_html=True)
+                    
             with l3:
                 render_func = getattr(mod, f"render_{code.lower()}")
                 lov_f = st.session_state.lovs[st.session_state.lovs['code'] == code].rename(
