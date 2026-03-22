@@ -102,8 +102,8 @@ with st.sidebar:
         st.subheader("Actions")
         if st.button("🚀 SIMULATION GLOBALE", type="secondary"):
             for item in st.session_state.criteria_data:
-                if item['code'] == 'WCWC':
-                    st.write("DEBUG WCWC details:", item['details'])
+                if item['code'] == 'CH2O':
+                    st.write("DEBUG CH2O details:", item['details'])
                 code = item['code']
                 mod = get_criteria_module(code)
                 choice = st.session_state.current_choices.get(code)
@@ -131,15 +131,16 @@ if st.session_state.data_loaded:
 
         st.write("Critères chargés:", [item['code'] for item in st.session_state.criteria_data])
         for item in st.session_state.criteria_data:
-            if item['code'] == 'WCWC':
-                st.write("DEBUG WCWC details:", item['details'])
+            if item['code'] == 'CH2O':
+                st.write("DEBUG CH2O details:", item['details'])
 
     # Mapping des Piliers
     MAPPING_PILIERS = {
         "🛠️ DURABILITY": ["PORE", "SPPA", "FRRR"],
         "⚡ USE": ["ENSA", "ENCO","PROF","TYEN","WCTA","WCWC"],
         "♻️ END OF LIFE": ["RECMM"],
-        "🌿 RAW MATERIAL EXTRACTION": ["REWO","RETE","EFCT"]
+        "🌿 RAW MATERIAL EXTRACTION": ["REWO","RETE","EFCT"],
+        "🏥 HEALTH": ["CH2O"]
     }
 
     for pillar_name, target_codes in MAPPING_PILIERS.items():
